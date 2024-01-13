@@ -92,6 +92,7 @@ class ReferenceData(NISTBase):
 			mass_spec: Optional[MassSpectrum] = None,
 			synonyms: Optional[Sequence[str]] = None,
 			exact_mass: Optional[Any] = None,
+			structure_data: Optional[Any] = None,
 			) -> None:
 
 		NISTBase.__init__(self, name, cas)
@@ -121,6 +122,7 @@ class ReferenceData(NISTBase):
 		else:
 			self._synonyms = [str(synonym) for synonym in synonyms]
 
+		self._structure_data = structure_data
 	@property
 	def formula(self) -> str:
 		"""
@@ -185,6 +187,14 @@ class ReferenceData(NISTBase):
 
 		return self._synonyms[:]
 
+	@property
+	def structure_data(self) -> Dict[str, Any]:
+		"""
+        A list of synonyms for the compound.
+        """
+
+		return self._structure_data
+
 	@classmethod
 	def from_pynist(cls, pynist_dict: Dict[str, Any]) -> "ReferenceData":
 		"""
@@ -192,7 +202,8 @@ class ReferenceData(NISTBase):
 
 		:param pynist_dict:
 		"""
-
+		structure = pynist_dict["structure_data"]
+		structure["str_list"] = [[chr(int(b)) for b in s if b!=0] for s in structure["str_list"]]
 		return cls(
 				name=parse_name_chars(pynist_dict["name_chars"]),
 				cas=pynist_dict["cas"],
@@ -203,6 +214,7 @@ class ReferenceData(NISTBase):
 				mw=pynist_dict["mw"],
 				mass_spec=MassSpectrum(pynist_dict["mass_list"], pynist_dict["intensity_list"]),
 				synonyms=[parse_name_chars(synonym) for synonym in pynist_dict["synonyms_chars"]],
+				structure_data = structure
 				)
 
 	def __repr__(self) -> str:

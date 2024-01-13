@@ -211,7 +211,7 @@ static PyObject *spectrum_search(NISTMS_IO *pio, int search_type, char *spectrum
 //	#define MAX_SCREEN_LOCS NISTMS_MAX_FPOS /* 6000 = largest number of tentative hits from the
 //											   screen search (pre-search) */
 //
-//	#define MAX_HITS_RETURNED MAX_LIB_SRCH_HITS
+	#define MAX_HITS_RETURNED MAX_LIB_SRCH_HITS
 
 	/*
 	The following seven buffers are attached to the NISTMS_HIT_LIST structure
@@ -241,7 +241,7 @@ static PyObject *spectrum_search(NISTMS_IO *pio, int search_type, char *spectrum
 
 	/*     OPTIONAL; for (possibly truncated) name retrieval for hit list presentation */
 	static unsigned char *lib_names = LibNamesBuffer;
-//	static NISTMS_RECLOC *stru_pos[MAX_HITS_RETURNED];
+	static NISTMS_RECLOC stru_pos[MAX_HITS_RETURNED];
 
 //	/*     OPTIONAL; for CAS reg. nos. retrieval for hit list presentation */
 //	static long *casnos[MAX_HITS_RETURNED];
@@ -339,6 +339,7 @@ static PyObject *spectrum_search(NISTMS_IO *pio, int search_type, char *spectrum
 	/* prepare hit list to receive spectrum pointers */
 	pio->hit_list                   = &hit_list;  /* hit list */
 	pio->hit_list->spec_locs        = fpos_array; /* spectrum pointers */
+	pio->hit_list->stru_pos         = stru_pos;
 	pio->hit_list->max_spec_locs    = MAX_NOPRESRCH_HITS;
 	pio->hit_list->max_hits_desired = MAX_NOPRESRCH_HITS;
 
@@ -356,8 +357,8 @@ static PyObject *spectrum_search(NISTMS_IO *pio, int search_type, char *spectrum
 	hit_list.lib_names = lib_names;
 	hit_list.lib_names_len = sizeof(LibNamesBuffer);
 	hit_list.max_one_lib_name_len = MAX_NAME_LEN;
-	hit_list.stru_pos = NULL;  /* no structures available in Peptide libraries */
-	hit_list.casnos   = NULL;  /* no CAS r.n. available in Peptide libraries */
+//	hit_list.stru_pos = NULL;  /* no structures available in Peptide libraries */
+//	hit_list.casnos   = NULL;  /* no CAS r.n. available in Peptide libraries */
 
 	pio->constraints = NULL;        /*  no constraints */
 
@@ -435,10 +436,10 @@ static PyObject *spectrum_search(NISTMS_IO *pio, int search_type, char *spectrum
 //			printf("%ld, ", pio->hit_list->stru_pos[i]);
 
 //			printf("%ld, ", pio->hit_list->spec_locs[i]);
-
+            PyObject *py_struct_loc = PyLong_FromLong(pio->hit_list->stru_pos[i]);
 			PyObject *py_spec_loc = PyLong_FromLong(pio->hit_list->spec_locs[i]);
 			PyDict_SetItemString(d, "spec_loc", py_spec_loc);
-
+            PyDict_SetItemString(d, "struct_loc", py_struct_loc);
 
 //			printf("%ld, ", pio->hit_list->casnos[i]);
 //			PyObject *py_cas_no = PyLong_FromLong(pio->hit_list->casnos[i]);
@@ -586,7 +587,7 @@ static PyObject *full_spectrum_search(NISTMS_IO *pio, char *spectrum) {
 
 	/*     OPTIONAL; for (possibly truncated) name retrieval for hit list presentation */
 	static unsigned char *lib_names = LibNamesBuffer;
-	static NISTMS_RECLOC *stru_pos[MAX_HITS_RETURNED];
+	static NISTMS_RECLOC stru_pos[MAX_HITS_RETURNED];
 
 	/*     OPTIONAL; for CAS reg. nos. retrieval for hit list presentation */
 	static long *casnos[MAX_HITS_RETURNED];
@@ -671,6 +672,7 @@ static PyObject *full_spectrum_search(NISTMS_IO *pio, char *spectrum) {
 	/* prepare hit list to receive spectrum pointers */
 	pio->hit_list                   = &hit_list;  /* hit list */
 	pio->hit_list->spec_locs        = fpos_array; /* spectrum pointers */
+	pio->hit_list->stru_pos         = stru_pos;
 	pio->hit_list->max_spec_locs = search_type == NISTMS_SCREEN_SRCH? MAX_SCREEN_LOCS : MAX_NOPRESRCH_HITS;
 
 	/*  Screen ("pre-search") retrieves set of tentative hits */
@@ -788,7 +790,8 @@ static PyObject *full_spectrum_search(NISTMS_IO *pio, char *spectrum) {
 //			PyDict_SetItemString(d, "hit_name", py_hit_name);
 
 //			printf("%ld, ", pio->hit_list->stru_pos[i]);
-
+            PyObject *py_struct_loc = PyLong_FromLong(pio->hit_list->stru_pos[i]);
+            PyDict_SetItemString(d, "struct_loc", py_struct_loc);
 			PyObject *py_spec_loc = PyLong_FromLong(hit_list.spec_locs[i]);
 			PyDict_SetItemString(d, "spec_loc", py_spec_loc);
 //			printf("%ld, ", pio->hit_list->spec_locs[i]);
@@ -819,6 +822,7 @@ static PyObject *get_reference_data(PyObject *self, PyObject *args) {
 	PyObject *py_intensity_list = PyList_New(0);
 //	PyObject *py_synonym_list = PyList_New(0);
 	PyObject *py_synonyms_char_list = PyList_New(0);
+	PyObject *py_structure_data = PyDict_New();
 
 	int ok = PyArg_ParseTuple(args, "l", &input_spec_loc);
 //	printf("Parsed Args\n");
@@ -913,6 +917,82 @@ static PyObject *get_reference_data(PyObject *self, PyObject *args) {
 //	PyDict_SetItemString(record, "synonyms", py_synonym_list);
 	PyDict_SetItemString(record, "synonyms_chars", py_synonyms_char_list);
 
+
+
+//  attempt to get stdata
+
+
+//  get xl and yl lists, and bond_type list
+    PyObject *py_xl_list = PyList_New(0);
+	PyObject *py_yl_list = PyList_New(0);
+	PyObject *py_bond_type_list = PyList_New(0);
+
+    for (int i=0; i < NISTMS_MAXBONDS; i++) {
+    //		printf("\tmz, Intensity: %d %d\n", io.libms->mass[i], io.libms->abund[i]);
+    //		printf("%d\n", PyLong_FromLong(io.libms->mass[i]));
+            PyList_Append(py_xl_list, PyLong_FromLong(io.stdata->xl[i]));
+            PyList_Append(py_yl_list, PyLong_FromLong(io.stdata->yl[i]));
+            PyList_Append(py_bond_type_list, PyLong_FromLong(io.stdata->bond_type[i]));
+
+    }
+    PyDict_SetItemString(py_structure_data, "xl_list", py_xl_list);
+    PyDict_SetItemString(py_structure_data, "yl_list", py_yl_list);
+    PyDict_SetItemString(py_structure_data, "bond_type_list", py_bond_type_list);
+
+// get num_points
+	PyObject *py_struct_num_points = PyLong_FromLong(io.stdata->num_points);
+    PyDict_SetItemString(py_structure_data,"num_points",py_struct_num_points);
+
+
+//  get xc and yc lists
+    PyObject *py_xc_list = PyList_New(0);
+	PyObject *py_yc_list = PyList_New(0);
+
+    for (int i=0; i < NISTMS_MAXCIRCS; i++) {
+    //		printf("\tmz, Intensity: %d %d\n", io.libms->mass[i], io.libms->abund[i]);
+    //		printf("%d\n", PyLong_FromLong(io.libms->mass[i]));
+            PyList_Append(py_xc_list, PyLong_FromLong(io.stdata->xc[i]));
+            PyList_Append(py_yc_list, PyLong_FromLong(io.stdata->yc[i]));
+
+    }
+    PyDict_SetItemString(py_structure_data, "xc_list", py_xc_list);
+    PyDict_SetItemString(py_structure_data, "yc_list", py_yc_list);
+
+//  get num_circs
+    PyObject *py_struct_num_circs = PyLong_FromLong(io.stdata->num_circs);
+    PyDict_SetItemString(py_structure_data,"num_circs",py_struct_num_circs);
+
+// get xs, ys lists, str list
+    PyObject *py_xs_list = PyList_New(0);
+	PyObject *py_ys_list = PyList_New(0);
+	PyObject *py_str_list = PyList_New(0);
+
+
+    for (int i=0; i < NISTMS_MAXSTRINGS; i++) {
+    //		printf("\tmz, Intensity: %d %d\n", io.libms->mass[i], io.libms->abund[i]);
+    //		printf("%d\n", PyLong_FromLong(io.libms->mass[i]));
+            PyList_Append(py_xs_list, PyLong_FromLong(io.stdata->xs[i]));
+            PyList_Append(py_ys_list, PyLong_FromLong(io.stdata->ys[i]));
+            PyObject *py_str_char_list = PyList_New(0);
+
+            for (size_t j = 0; j <= NISTMS_MAXSTRINGLEN; j++) {
+                PyList_Append(py_str_char_list, PyLong_FromLong((io.stdata->str[i])[j]));
+			}
+			PyList_Append(py_str_list, py_str_char_list);
+
+
+    }
+    PyDict_SetItemString(py_structure_data, "xs_list", py_xs_list);
+    PyDict_SetItemString(py_structure_data, "ys_list", py_ys_list);
+    PyDict_SetItemString(py_structure_data, "str_list", py_str_list);
+
+
+    PyObject *py_struct_num_strs = PyLong_FromLong(io.stdata->num_strs);
+    PyDict_SetItemString(py_structure_data,"num_strs",py_struct_num_strs);
+
+    PyDict_SetItemString(record,"structure_data", py_structure_data);
+
+	printf("STDATA: %ld\n", io.stdata->num_points);
 	return record;
 }
 
@@ -1162,7 +1242,6 @@ static void get_spectrum_int_or_accurate_mz(NISTMS_IO *pio, NISTMS_RECLOC *fpos,
 		nistms_search( NISTMS_GET_SPECTRUM_SRCH, pio);
 
 		/* show_spectrum(io);*/
-
 	//    printf("Name: %s\n", pio->aux_data->name);
 	//    printf("CAS: %ld\n", pio->aux_data->casno);
 	//    printf("NIST Num: %ld\n", pio->aux_data->specno);
