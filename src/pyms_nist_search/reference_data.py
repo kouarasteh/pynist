@@ -238,6 +238,7 @@ class ReferenceData(NISTBase):
 				exact_mass=self.exact_mass,
 				synonyms=self.synonyms[:],
 				mass_spec=self.mass_spec,
+				structure_data=structure
 				)
 
 	@property
